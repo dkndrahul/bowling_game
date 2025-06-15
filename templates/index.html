@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bowling Game</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="bg-gradient-to-br from-blue-100 to-indigo-200 min-h-screen flex items-center justify-center font-inter p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-4xl border border-blue-200 flex flex-col items-center">
+        <h1 class="text-4xl font-bold text-gray-800 mb-6 text-center">🎳 Bowling Game 🎳</h1>
+
+        <!-- Game Info and Controls -->
+        <div id="game-controls" class="mb-8 w-full">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+                <button id="startGameBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">
+                    Start New Game
+                </button>
+            </div>
+            
+            <div id="game-status" class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center text-lg font-medium text-blue-800 mb-6 hidden">
+                Current Frame: <span id="currentFrameDisplay" class="font-bold">1</span> | Total Score: <span id="totalScoreDisplay" class="font-bold">0</span>
+            </div>
+
+            <div id="roll-inputs" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 hidden">
+                <input type="number" id="roll1Input" placeholder="Roll 1 (0-10 pins)" min="0" max="10" class="input-field">
+                <input type="number" id="roll2Input" placeholder="Roll 2 (0-10 pins)" min="0" max="10" class="input-field">
+            </div>
+
+            <button id="submitRollsBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 w-full hidden focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-75">
+                Submit Rolls
+            </button>
+            
+            <p id="message" class="text-center text-red-600 mt-4 font-semibold hidden"></p>
+        </div>
+
+        <!-- Scoreboard Display -->
+        <div id="scoreboard" class="w-full">
+            <h2 class="text-2xl font-bold text-gray-700 mb-4 text-center">Scoreboard</h2>
+            <div class="overflow-x-auto rounded-lg shadow-md border border-gray-200">
+                <table class="min-w-full bg-white text-sm text-gray-700">
+                    <thead class="bg-gray-100 uppercase text-gray-600">
+                        <tr>
+                            <th class="py-3 px-4 text-left font-semibold">Frame</th>
+                            <th class="py-3 px-4 text-left font-semibold">Rolls</th>
+                            <th class="py-3 px-4 text-left font-semibold">Mark</th>
+                            <th class="py-3 px-4 text-right font-semibold">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scoreboardBody" class="divide-y divide-gray-200">
+                        <!-- Frame scores will be dynamically inserted here by JavaScript -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-indigo-50 border-t border-indigo-200">
+                            <td colspan="3" class="py-3 px-4 font-bold text-lg text-indigo-800 text-right">Total:</td>
+                            <td id="finalScoreboardTotal" class="py-3 px-4 font-bold text-lg text-indigo-800 text-right">0</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- Game Over / Play Again -->
+        <div id="gameOverSection" class="mt-8 text-center hidden">
+            <h2 class="text-3xl font-bold text-green-700 mb-4">Game Over!</h2>
+            <p class="text-2xl text-gray-800 mb-6">Your Final Score: <span id="finalGameScore" class="font-extrabold text-green-800">0</span></p>
+            <button id="playAgainBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-75">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for game state
+        let gameId = null;
+        let rolls = []; // Stores all rolls for the current game
+        let currentFrame = 1;
+        const maxFrames = 10;
+        let isGameOver = false;
+
+        // Get DOM elements
+        const startGameBtn = document.getElementById('startGameBtn');
+        const gameStatusDiv = document.getElementById('game-status');
+        const currentFrameDisplay = document.getElementById('currentFrameDisplay');
+        const totalScoreDisplay = document.getElementById('totalScoreDisplay');
+        const rollInputsDiv = document.getElementById('roll-inputs');
+        const roll1Input = document.getElementById('roll1Input');
+        const roll2Input = document.getElementById('roll2Input');
+        const submitRollsBtn = document.getElementById('submitRollsBtn');
+        const messageDisplay = document.getElementById('message');
+        const scoreboardBody = document.getElementById('scoreboardBody');
+        const finalScoreboardTotal = document.getElementById('finalScoreboardTotal');
+        const gameOverSection = document.getElementById('gameOverSection');
+        const finalGameScoreDisplay = document.getElementById('finalGameScore');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+
+        // --- Utility Functions ---
+
+        /**
+         * Displays a message to the user for a short period.
+         * @param {string} msg The message to display.
+         * @param {boolean} isError True if it's an error message (red text), false for normal (default).
+         */
+        function showMessage(msg, isError = false) {
+            messageDisplay.textContent = msg;
+            messageDisplay.classList.remove('hidden', 'text-red-600', 'text-green-600');
+            if (isError) {
+                messageDisplay.classList.add('text-red-600');
+            } else {
+                messageDisplay.classList.add('text-green-600'); // Or a neutral color
+            }
+            // Make the message visible and then fade it out after 3 seconds
+            messageDisplay.style.opacity = 1;
+            setTimeout(() => {
+                messageDisplay.style.transition = 'opacity 1s ease-out';
+                messageDisplay.style.opacity = 0;
+                setTimeout(() => {
+                    messageDisplay.classList.add('hidden');
+                    messageDisplay.style.transition = ''; // Reset transition
+                }, 1000); // Wait for fade out to complete
+            }, 3000);
+        }
+
+        /**
+         * Clears all game state and resets the UI for a new game.
+         */
+        function resetGame() {
+            gameId = null;
+            rolls = [];
+            currentFrame = 1;
+            isGameOver = false;
+            roll1Input.value = '';
+            roll2Input.value = '';
+            roll1Input.disabled = false;
+            roll2Input.disabled = false;
+            submitRollsBtn.disabled = false;
+
+            gameStatusDiv.classList.add('hidden');
+            rollInputsDiv.classList.add('hidden');
+            submitRollsBtn.classList.add('hidden');
+            gameOverSection.classList.add('hidden');
+            startGameBtn.classList.remove('hidden'); // Show start game button
+
+            updateScoreboard(0, []); // Clear scoreboard
+        }
+
+        /**
+         * Updates the main game status display (current frame, total score).
+         * @param {number} totalScore The current total game score.
+         * @param {Array} frameScores A list of frame score objects.
+         */
+        function updateGameStatus(totalScore, frameScores) {
+            totalScoreDisplay.textContent = totalScore;
+            // Determine current frame based on completed frames
+            currentFrame = frameScores.length + 1;
+            if (currentFrame > maxFrames) {
+                currentFrame = maxFrames; // Cap at 10 for display purposes after game over
+            }
+            currentFrameDisplay.textContent = currentFrame;
+
+            // Ensure scoreboard is updated
+            updateScoreboard(totalScore, frameScores);
+        }
+
+        /**
+         * Updates the detailed scoreboard table.
+         * @param {number} totalScore The current total game score.
+         * @param {Array} frameScores A list of frame score objects.
+         */
+        function updateScoreboard(totalScore, frameScores) {
+            scoreboardBody.innerHTML = ''; // Clear previous entries
+            frameScores.forEach(frame => {
+                const row = document.createElement('tr');
+                row.classList.add('hover:bg-gray-50');
+
+                // Determine CSS class for highlights (current frame, strike/spare)
+                let markClass = '';
+                if (frame.mark === 'Strike') {
+                    markClass = 'bg-yellow-50 text-yellow-800 font-semibold';
+                } else if (frame.mark === 'Spare') {
+                    markClass = 'bg-blue-50 text-blue-800 font-semibold';
+                }
+                if (frame.frame === currentFrame && !isGameOver) {
+                    row.classList.add('bg-purple-50'); // Highlight current frame
+                }
+
+                row.innerHTML = `
+                    <td class="py-2 px-4 whitespace-nowrap">${frame.frame}</td>
+                    <td class="py-2 px-4 whitespace-nowrap">${frame.rolls.join(', ')}</td>
+                    <td class="py-2 px-4 whitespace-nowrap ${markClass}">${frame.mark}</td>
+                    <td class="py-2 px-4 whitespace-nowrap text-right">${frame.score}</td>
+                `;
+                scoreboardBody.appendChild(row);
+            });
+
+            // Fill empty rows for remaining frames if game not over
+            for (let i = frameScores.length; i < maxFrames; i++) {
+                const row = document.createElement('tr');
+                row.classList.add('text-gray-400'); // Style for empty frames
+                if (i + 1 === currentFrame && !isGameOver) {
+                    row.classList.add('bg-purple-50'); // Highlight current frame
+                }
+                row.innerHTML = `
+                    <td class="py-2 px-4 whitespace-nowrap">${i + 1}</td>
+                    <td class="py-2 px-4 whitespace-nowrap">--</td>
+                    <td class="py-2 px-4 whitespace-nowrap">--</td>
+                    <td class="py-2 px-4 whitespace-nowrap text-right">--</td>
+                `;
+                scoreboardBody.appendChild(row);
+            }
+
+            finalScoreboardTotal.textContent = totalScore;
+        }
+
+        /**
+         * Handles the start game button click.
+         * Calls backend to get a new game ID and initializes frontend state.
+         */
+        async function handleStartGame() {
+            try {
+                const response = await fetch('/start_game', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    gameId = data.game_id;
+                    rolls = [];
+                    currentFrame = 1;
+                    isGameOver = false;
+                    
+                    // Show game elements
+                    startGameBtn.classList.add('hidden');
+                    gameStatusDiv.classList.remove('hidden');
+                    rollInputsDiv.classList.remove('hidden');
+                    submitRollsBtn.classList.remove('hidden');
+                    gameOverSection.classList.add('hidden'); // Ensure hidden
+                    
+                    roll1Input.value = '';
+                    roll2Input.value = '';
+                    roll1Input.disabled = false;
+                    roll2Input.disabled = false;
+                    submitRollsBtn.disabled = false;
+                    showMessage('Game started! Enter your first roll(s).', false);
+                    updateGameStatus(0, []); // Reset UI
+                } else {
+                    showMessage(`Failed to start game: ${data.error}`, true);
+                }
+            } catch (error) {
+                showMessage(`Network error: ${error.message}`, true);
+            }
+        }
+
+        /**
+         * Validates roll inputs based on bowling rules.
+         * @param {number} r1 Value of roll 1.
+         * @param {number} r2 Value of roll 2.
+         * @returns {boolean} True if inputs are valid, false otherwise.
+         */
+        function validateRollInputs(r1, r2) {
+            // Ensure values are numbers and within 0-10 range
+            if (isNaN(r1) || r1 < 0 || r1 > 10) {
+                showMessage("Roll 1 must be between 0 and 10 pins.", true);
+                return false;
+            }
+            if (r2 === null) { // Only one roll entered, validate if it's a strike (10 pins)
+                if (r1 !== 10 && currentFrame < maxFrames) { // If not a strike and not 10th frame, must enter second roll
+                    showMessage("For frames 1-9, you must enter a second roll unless the first was a strike.", true);
+                    return false;
+                }
+                // In 10th frame, 1 roll is valid (e.g., waiting for bonus after first strike)
+            } else { // Both rolls entered
+                if (isNaN(r2) || r2 < 0 || r2 > 10) {
+                    showMessage("Roll 2 must be between 0 and 10 pins.", true);
+                    return false;
+                }
+                // Sum of two rolls cannot exceed 10 in a regular frame (not 10th frame bonus)
+                if (currentFrame < maxFrames && (r1 + r2 > 10)) {
+                    showMessage("Sum of rolls in a frame (except 10th bonus) cannot exceed 10 pins.", true);
+                    return false;
+                }
+                if (currentFrame === maxFrames) { // 10th frame validation
+                    // If first roll is not 10 (strike), then first two rolls sum cannot exceed 10
+                    if (r1 !== 10 && r1 + r2 > 10) {
+                         showMessage("For the 10th frame, if the first roll is not a strike, the sum of the first two rolls cannot exceed 10.", true);
+                         return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Handles the submission of rolls.
+         * Collects input, validates, appends to global rolls array, and sends to backend.
+         */
+        async function handleSubmitRolls() {
+            if (isGameOver) {
+                showMessage("Game is over. Please start a new game.", false);
+                return;
+            }
+
+            let roll1 = parseInt(roll1Input.value);
+            let roll2 = roll2Input.value === '' ? null : parseInt(roll2Input.value);
+            
+            // Handle edge case where roll2 is intentionally left empty for a strike
+            if (roll1 === 10 && currentFrame < maxFrames) { // If it's a strike and not 10th frame
+                if (roll2 !== null && roll2 !== 0) { // If user tried to enter something for roll 2 after strike
+                    showMessage("For a strike in frames 1-9, only enter the first roll.", true);
+                    return;
+                }
+                roll2 = 0; // Effectively make second roll 0 for internal tracking, but it's not a real roll.
+            }
+
+            if (!validateRollInputs(roll1, roll2)) {
+                return;
+            }
+
+            // Append rolls to the global array
+            rolls.push(roll1);
+            if (roll1 !== 10 || currentFrame === maxFrames) { // If not a strike, or it's the 10th frame (where 2nd roll for 10 is needed)
+                 if (roll2 !== null) { // Only add roll2 if it was explicitly entered or derived for 10th frame
+                    rolls.push(roll2);
+                 }
+            }
+            // For 10th frame, if strike/spare, and user enters bonus rolls, they get appended directly.
+            // The backend score calculation handles the logic of consuming bonus rolls.
+
+            try {
+                const response = await fetch('/calculate_score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ game_id: gameId, rolls: rolls })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const gameState = data.game_state;
+                    updateGameStatus(gameState.total_score, gameState.frame_scores);
+                    showMessage("Score updated!", false);
+
+                    roll1Input.value = '';
+                    roll2Input.value = '';
+
+                    if (gameState.game_over) {
+                        isGameOver = true;
+                        roll1Input.disabled = true;
+                        roll2Input.disabled = true;
+                        submitRollsBtn.disabled = true;
+                        showMessage("Game Over! Your final score is " + gameState.total_score + "!", false);
+                        gameOverSection.classList.remove('hidden');
+                        finalGameScoreDisplay.textContent = gameState.total_score;
+                    }
+                } else {
+                    showMessage(`Error: ${data.error}`, true);
+                    // If backend indicates an error (e.g., invalid roll sequence),
+                    // we might need to remove the last added rolls from the client-side `rolls` array.
+                    // For simplicity, for now, we just display the error.
+                    // A more robust app would roll back the client-side `rolls` to a valid state.
+                    if (roll2 !== null) { // If two rolls were submitted
+                        rolls.pop();
+                        rolls.pop();
+                    } else { // If only one roll was submitted
+                        rolls.pop();
+                    }
+                }
+            } catch (error) {
+                showMessage(`Network error: ${error.message}`, true);
+                if (roll2 !== null) { // If two rolls were submitted
+                    rolls.pop();
+                    rolls.pop();
+                } else { // If only one roll was submitted
+                    rolls.pop();
+                }
+            }
+        }
+
+        // --- Event Listeners ---
+        startGameBtn.addEventListener('click', handleStartGame);
+        submitRollsBtn.addEventListener('click', handleSubmitRolls);
+        playAgainBtn.addEventListener('click', resetGame); // Resets the game and shows Start button
+
+        // Allow entering only one roll if the first roll is a strike for frames 1-9
+        roll1Input.addEventListener('input', () => {
+            if (currentFrame < maxFrames && parseInt(roll1Input.value) === 10) {
+                roll2Input.value = ''; // Clear second input
+                roll2Input.disabled = true; // Disable second input
+            } else {
+                roll2Input.disabled = false; // Enable second input
+            }
+        });
+        
+        // Initial setup on page load
+        resetGame();
+        updateScoreboard(0, []); // Display empty scoreboard initially
+    </script>
+</body>
+</html>
